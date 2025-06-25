@@ -2,9 +2,17 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient, ObjectId } = require('mongodb');
 
-// URI de la base de datos
+// Asegúrate de que tu contraseña esté aquí
 const uri = "mongodb+srv://hernanpellicer99:YvgCeNxpL4CJJMAg@cluster0.pftwbfl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const client = new MongoClient(uri);
+
+// --- CAMBIO PARA ESTABILIZAR LA CONEXIÓN ---
+// Añadimos opciones para darle más tiempo a la conexión antes de fallar.
+const client = new MongoClient(uri, {
+    connectTimeoutMS: 30000, // Esperar 30 segundos para conectar
+    serverSelectionTimeoutMS: 30000 // Esperar 30 segundos para encontrar un servidor
+});
+// ------------------------------------------
+
 let db;
 
 async function connectDB() {
@@ -19,18 +27,10 @@ async function connectDB() {
 }
 
 const app = express();
-// Habilitamos CORS para que nuestra app pueda recibir peticiones
-// desde cualquier origen. Más adelante lo haremos más específico.
-app.use(cors()); 
+app.use(cors());
 app.use(express.json());
-
-// --- CAMBIO PARA EL DESPLIEGUE ---
-// El servidor usará el puerto que le asigne el hosting (process.env.PORT)
-// o el puerto 3000 si estamos en nuestra computadora local.
 const port = process.env.PORT || 3000;
-// ------------------------------------
 
-// La función de cálculo no cambia
 function calcularResumen(reporteData) {
     let totalIngresos = 0, totalCostoServicio = 0, totalGastosOperativos = 0;
     reporteData.sectionsData.forEach(s => s.subSections.forEach(ss => ss.rows.forEach(r => {
@@ -44,9 +44,7 @@ function calcularResumen(reporteData) {
     return { totalIngresos, utilidadBruta, utilidadOperativa, utilidadNeta };
 }
 
-// --- TODAS LAS RUTAS DE LA API (sin cambios) ---
-
-// POST /api/reportes
+// --- RUTAS DE LA API (sin cambios) ---
 app.post('/api/reportes', async (req, res) => {
     try {
         const reporteData = req.body;
@@ -59,11 +57,11 @@ app.post('/api/reportes', async (req, res) => {
         await collection.updateOne(filter, updateDoc, options);
         res.status(200).json({ status: 'success', message: 'Reporte guardado/actualizado exitosamente.' });
     } catch (error) {
+        console.error("Error al guardar/actualizar el reporte:", error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
 
-// GET /api/reportes
 app.get('/api/reportes', async (req, res) => {
     try {
         const collection = db.collection('reportesMensuales');
@@ -72,11 +70,11 @@ app.get('/api/reportes', async (req, res) => {
         }).sort({ "period.year": 1, "period.month": 1 }).toArray();
         res.status(200).json({ status: 'success', data: reportes });
     } catch (error) {
+        console.error("Error al obtener los reportes:", error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
 
-// GET /api/chart-data
 app.get('/api/chart-data', async (req, res) => {
     try {
         const collection = db.collection('reportesMensuales');
@@ -87,11 +85,11 @@ app.get('/api/chart-data', async (req, res) => {
         const utilidadNetaData = reportes.map(r => r.summary.utilidadNeta);
         res.status(200).json({ status: 'success', data: { labels: labels, datasets: [ { label: 'Ingresos Totales', data: ingresosData, borderColor: '#007bff', backgroundColor: 'rgba(0, 123, 255, 0.1)', fill: true, tension: 0.1 }, { label: 'Utilidad Neta', data: utilidadNetaData, borderColor: '#28a745', backgroundColor: 'rgba(40, 167, 69, 0.1)', fill: true, tension: 0.1 } ] } });
     } catch (error) {
+        console.error("Error al obtener los datos para el gráfico:", error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
 
-// GET /api/reportes/detalle/:id
 app.get('/api/reportes/detalle/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -104,29 +102,34 @@ app.get('/api/reportes/detalle/:id', async (req, res) => {
             res.status(404).json({ status: 'error', message: 'Reporte no encontrado.' });
         }
     } catch (error) {
+        console.error("Error al obtener el detalle del reporte:", error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
 
-// DELETE /api/reportes/:id
 app.delete('/api/reportes/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        if (!ObjectId.isValid(id)) return res.status(400).json({ status: 'error', message: 'ID de reporte inválido.' });
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ status: 'error', message: 'ID de reporte inválido.' });
+        }
+        
         const collection = db.collection('reportesMensuales');
         const result = await collection.deleteOne({ _id: new ObjectId(id) });
+
         if (result.deletedCount === 1) {
+            console.log(`Reporte con ID ${id} fue eliminado.`);
             res.status(200).json({ status: 'success', message: 'Reporte eliminado exitosamente.' });
         } else {
             res.status(404).json({ status: 'error', message: 'No se encontró el reporte para eliminar.' });
         }
     } catch (error) {
+        console.error("Error al eliminar el reporte:", error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
 
-// --- Iniciar Servidor y Conexión a BD ---
 app.listen(port, () => {
-    console.log(`Servidor escuchando en http://localhost:${port}`);
+    console.log(`Servidor escuchando en el puerto ${port}`);
     connectDB();
 });
