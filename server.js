@@ -36,22 +36,29 @@ function calcularResumen(reporteData) {
         gastosMantenimiento: 0
     };
 
-    reporteData.sectionsData.forEach(s => {
-        s.subSections.forEach(ss => {
-            let subTotal = 0;
-            ss.rows.forEach(r => {
-                if (r.category === 'ingresos') totalIngresos += r.value;
-                if (r.category === 'costo-servicio') totalCostoServicio += r.value;
-                if (r.category === 'gastos-op') {
-                    totalGastosOperativos += r.value;
-                    subTotal += r.value;
-                }
-            });
-            if (ss.containerId in gastosPorSubCategoria) {
-                gastosPorSubCategoria[ss.containerId] = subTotal;
+    if (reporteData.sectionsData) {
+        reporteData.sectionsData.forEach(s => {
+            if (s.subSections) {
+                s.subSections.forEach(ss => {
+                    let subTotal = 0;
+                    if (ss.rows) {
+                        ss.rows.forEach(r => {
+                            if (r.category === 'ingresos') totalIngresos += r.value;
+                            if (r.category === 'costo-servicio') totalCostoServicio += r.value;
+                            if (r.category === 'gastos-op') {
+                                totalGastosOperativos += r.value;
+                                subTotal += r.value;
+                            }
+                        });
+                    }
+                    if (ss.containerId in gastosPorSubCategoria) {
+                        gastosPorSubCategoria[ss.containerId] = subTotal;
+                    }
+                });
             }
         });
-    });
+    }
+
     const utilidadBruta = totalIngresos - totalCostoServicio;
     const utilidadOperativa = utilidadBruta - totalGastosOperativos;
     const utilidadNeta = utilidadOperativa - (reporteData.impuestos || 0);
@@ -59,8 +66,6 @@ function calcularResumen(reporteData) {
 
     return { totalIngresos, utilidadBruta, utilidadOperativa, utilidadNeta, margenNeto, gastosPorSubCategoria };
 }
-
-// --- RUTAS DE LA API ---
 
 app.post('/api/reportes', async (req, res) => {
     try {
@@ -128,13 +133,12 @@ app.delete('/api/reportes/:id', async (req, res) => {
     }
 });
 
-// --- NUEVA RUTA PARA KPI y GRÁFICO DE DONA ---
 app.get('/api/kpi-summary', async(req, res) => {
     try {
         const collection = db.collection('reportesMensuales');
         const latestReport = await collection.find({}).sort({ "period.year": -1, "period.month": -1 }).limit(1).toArray();
         if (latestReport.length === 0) {
-            return res.status(200).json({ status: 'success', data: null }); // Enviar nulo si no hay reportes
+            return res.status(200).json({ status: 'success', data: null });
         }
         res.status(200).json({ status: 'success', data: latestReport[0].summary });
     } catch (error) {
