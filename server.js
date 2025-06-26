@@ -30,7 +30,6 @@ const port = process.env.PORT || 3000;
 
 function calcularResumen(reporteData) {
     let totalIngresos = 0, totalCostoServicio = 0;
-    // Variables para el nuevo desglose de gastos
     let totalGastosVentaMarketing = 0;
     let totalGastosGeneralesAdmin = 0;
     let totalGastosMantenimiento = 0;
@@ -41,7 +40,6 @@ function calcularResumen(reporteData) {
                 section.subSections.forEach(subSection => {
                     const subSectionTotal = subSection.rows ? subSection.rows.reduce((sum, row) => sum + (row.value || 0), 0) : 0;
                     
-                    // Usamos el containerId para asignar el total a la categoría correcta
                     const id = subSection.containerId;
                     if (id === 'ingresos') totalIngresos += subSectionTotal;
                     if (id === 'costoServicio') totalCostoServicio += subSectionTotal;
@@ -58,9 +56,12 @@ function calcularResumen(reporteData) {
     const utilidadOperativa = utilidadBruta - totalGastosOperativos;
     const impuestos = reporteData.impuestos || 0;
     const utilidadNeta = utilidadOperativa - impuestos;
+
+    // --- NUEVOS CÁLCULOS DE MÁRGENES ---
+    const margenBruto = totalIngresos > 0 ? (utilidadBruta / totalIngresos) * 100 : 0;
+    const margenOperativo = totalIngresos > 0 ? (utilidadOperativa / totalIngresos) * 100 : 0;
     const margenNeto = totalIngresos > 0 ? (utilidadNeta / totalIngresos) * 100 : 0;
 
-    // Devolvemos el objeto summary con el nuevo desglose
     return { 
         totalIngresos, 
         totalCostoServicio, 
@@ -72,7 +73,9 @@ function calcularResumen(reporteData) {
         utilidadBruta, 
         utilidadOperativa, 
         utilidadNeta, 
-        margenNeto 
+        margenBruto,      // <-- Añadido
+        margenOperativo,  // <-- Añadido
+        margenNeto
     };
 }
 
