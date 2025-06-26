@@ -29,32 +29,53 @@ app.use(express.json());
 const port = process.env.PORT || 3000;
 
 function calcularResumen(reporteData) {
-    let totalIngresos = 0, totalCostoServicio = 0, totalGastosOperativos = 0;
+    let totalIngresos = 0, totalCostoServicio = 0;
+    // Variables para el nuevo desglose de gastos
+    let totalGastosVentaMarketing = 0;
+    let totalGastosGeneralesAdmin = 0;
+    let totalGastosMantenimiento = 0;
     
     if (reporteData.sectionsData) {
-        reporteData.sectionsData.forEach(s => {
-            if (s.subSections) {
-                s.subSections.forEach(ss => {
-                    if (ss.rows) {
-                        ss.rows.forEach(r => {
-                            if (r.category === 'ingresos') totalIngresos += r.value;
-                            if (r.category === 'costo-servicio') totalCostoServicio += r.value;
-                            if (r.category === 'gastos-op') totalGastosOperativos += r.value;
-                        });
-                    }
+        reporteData.sectionsData.forEach(section => {
+            if (section.subSections) {
+                section.subSections.forEach(subSection => {
+                    const subSectionTotal = subSection.rows ? subSection.rows.reduce((sum, row) => sum + (row.value || 0), 0) : 0;
+                    
+                    // Usamos el containerId para asignar el total a la categoría correcta
+                    const id = subSection.containerId;
+                    if (id === 'ingresos') totalIngresos += subSectionTotal;
+                    if (id === 'costoServicio') totalCostoServicio += subSectionTotal;
+                    if (id === 'gastosVentaMarketing') totalGastosVentaMarketing += subSectionTotal;
+                    if (id === 'gastosGeneralesAdmin') totalGastosGeneralesAdmin += subSectionTotal;
+                    if (id === 'gastosMantenimiento') totalGastosMantenimiento += subSectionTotal;
                 });
             }
         });
     }
 
+    const totalGastosOperativos = totalGastosVentaMarketing + totalGastosGeneralesAdmin + totalGastosMantenimiento;
     const utilidadBruta = totalIngresos - totalCostoServicio;
     const utilidadOperativa = utilidadBruta - totalGastosOperativos;
     const impuestos = reporteData.impuestos || 0;
     const utilidadNeta = utilidadOperativa - impuestos;
     const margenNeto = totalIngresos > 0 ? (utilidadNeta / totalIngresos) * 100 : 0;
 
-    return { totalIngresos, totalCostoServicio, totalGastosOperativos, impuestos, utilidadBruta, utilidadOperativa, utilidadNeta, margenNeto };
+    // Devolvemos el objeto summary con el nuevo desglose
+    return { 
+        totalIngresos, 
+        totalCostoServicio, 
+        totalGastosOperativos,
+        totalGastosVentaMarketing,
+        totalGastosGeneralesAdmin,
+        totalGastosMantenimiento,
+        impuestos, 
+        utilidadBruta, 
+        utilidadOperativa, 
+        utilidadNeta, 
+        margenNeto 
+    };
 }
+
 
 // --- RUTAS DE LA API ---
 
@@ -70,6 +91,7 @@ app.post('/api/reportes', async (req, res) => {
         await collection.updateOne(filter, updateDoc, options);
         res.status(200).json({ status: 'success', message: 'Reporte guardado/actualizado exitosamente.' });
     } catch (error) {
+        console.error('Error en /api/reportes POST:', error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
@@ -82,6 +104,7 @@ app.get('/api/reportes', async (req, res) => {
         }).sort({ "period.year": 1, "period.month": 1 }).toArray();
         res.status(200).json({ status: 'success', data: reportes });
     } catch (error) {
+        console.error('Error en /api/reportes GET:', error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
@@ -96,6 +119,7 @@ app.get('/api/chart-data', async (req, res) => {
         const utilidadNetaData = reportes.map(r => r.summary.utilidadNeta);
         res.status(200).json({ status: 'success', data: { labels, datasets: [ { label: 'Ingresos Totales', data: ingresosData, borderColor: 'rgb(59, 130, 246)', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.3, pointBackgroundColor: 'rgb(59, 130, 246)' }, { label: 'Utilidad Neta', data: utilidadNetaData, borderColor: 'rgb(34, 197, 94)', backgroundColor: 'rgba(34, 197, 94, 0.1)', fill: true, tension: 0.3, pointBackgroundColor: 'rgb(34, 197, 94)' } ] } });
     } catch (error) {
+        console.error('Error en /api/chart-data GET:', error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
@@ -108,6 +132,7 @@ app.get('/api/reportes/detalle/:id', async (req, res) => {
         const reporte = await collection.findOne({ _id: new ObjectId(id) });
         res.status(reporte ? 200 : 404).json(reporte ? { status: 'success', data: reporte.fullData } : { status: 'error', message: 'Reporte no encontrado.' });
     } catch (error) {
+        console.error('Error en /api/reportes/detalle GET:', error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
@@ -120,6 +145,7 @@ app.delete('/api/reportes/:id', async (req, res) => {
         const result = await collection.deleteOne({ _id: new ObjectId(id) });
         res.status(result.deletedCount === 1 ? 200 : 404).json(result.deletedCount === 1 ? { status: 'success', message: 'Reporte eliminado.' } : { status: 'error', message: 'No se encontró el reporte.' });
     } catch (error) {
+        console.error('Error en /api/reportes DELETE:', error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
@@ -139,6 +165,7 @@ app.get('/api/kpi-summary/:year/:month', async(req, res) => {
         }
         res.status(200).json({ status: 'success', data: report.summary });
     } catch (error) {
+        console.error('Error en /api/kpi-summary GET:', error);
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
 });
@@ -147,4 +174,3 @@ app.listen(port, () => {
     console.log(`Servidor escuchando en el puerto ${port}`);
     connectDB();
 });
-
