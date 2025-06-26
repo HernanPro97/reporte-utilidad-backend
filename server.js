@@ -124,7 +124,6 @@ app.delete('/api/reportes/:id', async (req, res) => {
     }
 });
 
-// --- RUTA MODIFICADA PARA KPI Y GRÁFICO DE TORTA ---
 app.get('/api/kpi-summary/:year/:month', async(req, res) => {
     try {
         const { year, month } = req.params;
