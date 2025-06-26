@@ -30,29 +30,17 @@ const port = process.env.PORT || 3000;
 
 function calcularResumen(reporteData) {
     let totalIngresos = 0, totalCostoServicio = 0, totalGastosOperativos = 0;
-    const gastosPorSubCategoria = {
-        gastosVentaMarketing: 0,
-        gastosGeneralesAdmin: 0,
-        gastosMantenimiento: 0
-    };
-
+    
     if (reporteData.sectionsData) {
         reporteData.sectionsData.forEach(s => {
             if (s.subSections) {
                 s.subSections.forEach(ss => {
-                    let subTotal = 0;
                     if (ss.rows) {
                         ss.rows.forEach(r => {
                             if (r.category === 'ingresos') totalIngresos += r.value;
                             if (r.category === 'costo-servicio') totalCostoServicio += r.value;
-                            if (r.category === 'gastos-op') {
-                                totalGastosOperativos += r.value;
-                                subTotal += r.value;
-                            }
+                            if (r.category === 'gastos-op') totalGastosOperativos += r.value;
                         });
-                    }
-                    if (ss.containerId in gastosPorSubCategoria) {
-                        gastosPorSubCategoria[ss.containerId] = subTotal;
                     }
                 });
             }
@@ -61,11 +49,14 @@ function calcularResumen(reporteData) {
 
     const utilidadBruta = totalIngresos - totalCostoServicio;
     const utilidadOperativa = utilidadBruta - totalGastosOperativos;
-    const utilidadNeta = utilidadOperativa - (reporteData.impuestos || 0);
+    const impuestos = reporteData.impuestos || 0;
+    const utilidadNeta = utilidadOperativa - impuestos;
     const margenNeto = totalIngresos > 0 ? (utilidadNeta / totalIngresos) * 100 : 0;
 
-    return { totalIngresos, utilidadBruta, utilidadOperativa, utilidadNeta, margenNeto, gastosPorSubCategoria };
+    return { totalIngresos, totalCostoServicio, totalGastosOperativos, impuestos, utilidadBruta, utilidadOperativa, utilidadNeta, margenNeto };
 }
+
+// --- RUTAS DE LA API ---
 
 app.post('/api/reportes', async (req, res) => {
     try {
@@ -133,14 +124,21 @@ app.delete('/api/reportes/:id', async (req, res) => {
     }
 });
 
-app.get('/api/kpi-summary', async(req, res) => {
+// --- RUTA MODIFICADA PARA KPI Y GRÁFICO DE TORTA ---
+app.get('/api/kpi-summary/:year/:month', async(req, res) => {
     try {
+        const { year, month } = req.params;
         const collection = db.collection('reportesMensuales');
-        const latestReport = await collection.find({}).sort({ "period.year": -1, "period.month": -1 }).limit(1).toArray();
-        if (latestReport.length === 0) {
-            return res.status(200).json({ status: 'success', data: null });
+        
+        const report = await collection.findOne({ 
+            "period.year": year, 
+            "period.month": month 
+        });
+
+        if (!report) {
+            return res.status(404).json({ status: 'error', message: 'No se encontró reporte para este período.' });
         }
-        res.status(200).json({ status: 'success', data: latestReport[0].summary });
+        res.status(200).json({ status: 'success', data: report.summary });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'Error interno del servidor.' });
     }
